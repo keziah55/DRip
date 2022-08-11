@@ -1,7 +1,7 @@
 from qtpy.QtWidgets import (QLabel, QFileDialog, QPushButton, QWidget, QFrame, 
                             QInputDialog, QGridLayout, QPlainTextEdit, QTabWidget,
                             QHBoxLayout, QVBoxLayout, QCheckBox, QLineEdit,
-                            QSpinBox)
+                            QSpinBox, QScrollArea)
 from qtpy.QtCore import Qt, QTimer, Slot, QThread
 from qtpy.QtGui import QIcon
 from .cmdwidget import CmdWidget
@@ -36,12 +36,12 @@ class FfmpegWidget(QWidget):
         self.cmdView.addTab(self.infoWidget, "Info")
         self.cmdView.addTab(self.runWidget, "Run")
         
-        argsLayout = QHBoxLayout()
-        argsLayout.addWidget(self.inpathButton)
-        argsLayout.addWidget(self.outdirButton)
+        self.argsLayout = QVBoxLayout()
+        self.argsLayout.addWidget(self.inpathButton)
+        self.argsLayout.addWidget(self.outdirButton)
         
-        layout = QVBoxLayout()
-        layout.addLayout(argsLayout)
+        layout = QHBoxLayout()
+        layout.addLayout(self.argsLayout)
         layout.addWidget(self.cmdView)
         
         self.setLayout(layout)
@@ -127,7 +127,7 @@ class FfmpegWidget(QWidget):
             i = re.finditer(r"Stream #(?P<stream>\d+:\d+)\[0x\w+\]: (?P<type>\w+): (?P<info>.*)", text)
             for m in i:
                 self.widget.addStream(m.group('stream'), m.group('type'), m.group('info'))
-        self.layout().insertWidget(1, self.widget)
+        self.argsLayout.addWidget(self.widget)
 
 
 class StreamWidget(QWidget):
@@ -185,4 +185,14 @@ class FfmpegArgWidget(QWidget):
         stream = StreamWidget(num, streamType, info)
         self.layout.addWidget(stream)
         
+        
+class FfmpegScrollArea(QScrollArea):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.widget = FfmpegArgWidget(*args, **kwargs)
+        self.widget.show()
+        self.setWidget(self.widget)
+        
+    def __getattr__(self, name):
+        return getattr(self.widget, name)
         

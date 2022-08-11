@@ -61,12 +61,12 @@ class DvdBackupWidget(QWidget):
         self.cmdView.addTab(self.runWidget, "Run")
         self.cmdView.addTab(self.catWidget, "Cat")
         
-        argsLayout = QHBoxLayout()
+        argsLayout = QVBoxLayout()
         argsLayout.addWidget(self.deviceButton)
         argsLayout.addWidget(self.outdirButton)
         argsLayout.addWidget(self.titleBox)
         
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
         layout.addLayout(argsLayout)
         layout.addWidget(self.cmdView)
         
