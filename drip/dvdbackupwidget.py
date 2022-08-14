@@ -65,6 +65,7 @@ class DvdBackupWidget(QWidget):
         argsLayout.addWidget(self.deviceButton)
         argsLayout.addWidget(self.outdirButton)
         argsLayout.addWidget(self.titleBox)
+        argsLayout.addStretch()
         
         layout = QHBoxLayout()
         layout.addLayout(argsLayout)
