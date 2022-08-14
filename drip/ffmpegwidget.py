@@ -62,7 +62,6 @@ class FfmpegWidget(QWidget):
         crfLayout.addWidget(crfLabel)
         crfLayout.addWidget(self.crfBox)
         
-        # self.argsLayout = QVBoxLayout()
         self.argsLayout = QGridLayout()
         self.argsLayout.addWidget(self.inpathButton, 0, 0, 1, 3)
         self.argsLayout.addWidget(self.outdirButton, 1, 0, 1, 3)
@@ -70,10 +69,6 @@ class FfmpegWidget(QWidget):
         self.argsLayout.addWidget(self.threadsBox, 2, 1, 1, 2)
         self.argsLayout.addWidget(crfLabel, 3, 0)
         self.argsLayout.addWidget(self.crfBox, 3, 1, 1, 2)
-        # self.argsLayout.addLayout(threadsLayout)
-        # self.argsLayout.addLayout(crfLayout)
-        
-        # self.argsLayout.addStretch()
         
         layout = QHBoxLayout()
         layout.addLayout(self.argsLayout)
@@ -157,16 +152,15 @@ class FfmpegWidget(QWidget):
             pass
         
     def _getStreamInfo(self):
-        # streamLayout = QGridLayout()
-        # self.argsLayout.addLayout(streamLayout)
+        # TODO remove existing stream widgets and remake
         nextRow = self.argsLayout.rowCount() + 1
         if (text := self.infoWidget.text):
             i = re.finditer(r"Stream #(?P<stream>\d+:\d+)\[0x\w+\]: (?P<type>\w+): (?P<info>.*)", text)
             for m in i:
                 nextRow = self.addStream(self.argsLayout, nextRow, m.group('stream'), m.group('type'), m.group('info'))
-        # self.argsLayout.addWidget(self.widget)
 
     def addStream(self, layout, nextRow, num, streamType, info):
+        # TODO get values 
         box = QCheckBox()
         label = QLabel(f"Stream #{num}: {streamType}: {info}")
         label.setStyleSheet("text-align: left;")
@@ -187,35 +181,3 @@ class FfmpegWidget(QWidget):
             layout.addWidget(titleEdit, nextRow, 2)
         nextRow += 1
         return nextRow
-        
-        
-        # stream = StreamWidget(num, streamType, info)
-        # self.argsLayout.addWidget(stream)
-        
-
-class StreamWidget(QWidget):
-    def __init__(self, num, streamType, info):
-        super().__init__()
-        box = QCheckBox()
-        label = QLabel(f"Stream #{num}: {streamType}: {info}")
-        label.setStyleSheet("text-align: left;")
-        self.num = num
-        self.streamType = streamType
-        layout = QGridLayout()
-        layout.addWidget(box, 0, 0)
-        layout.addWidget(label, 0, 1, 1, 2)
-        if streamType.lower() in ['audio', 'subtitle']:
-            langLabel = QLabel("Language: ")
-            langEdit = QLineEdit("eng")
-            titleLabel = QLabel("Title: ")
-            titleEdit = QLineEdit("English")
-            layout.addWidget(langLabel, 1, 1)
-            layout.addWidget(langEdit, 1, 2)
-            layout.addWidget(titleLabel, 2, 1)
-            layout.addWidget(titleEdit, 2, 2)
-        self.setLayout(layout)
-            
-            
-
-
-        
