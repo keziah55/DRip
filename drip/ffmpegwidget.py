@@ -4,7 +4,7 @@ from qtpy.QtWidgets import (QLabel, QFileDialog, QPushButton, QWidget, QFrame,
                             QSpinBox, QScrollArea)
 from qtpy.QtCore import Qt, QTimer, Slot, QThread
 from qtpy.QtGui import QIcon
-from customQObjects.widgets import ElideMixin
+from customQObjects.widgets import ElideMixin, HSplitter
 from .cmdwidget import CmdWidget
 from .subprocessthread import SubprocessWorker
 import os
@@ -16,32 +16,22 @@ class ElideButton(ElideMixin, QPushButton):
         self.setStyleSheet("text-align: left;")
         
 
-class FfmpegWidget(QWidget):
-    def __init__(self):
+class ParamView(QWidget):
+    
+    def __init__(self, parent):
         super().__init__()
         
         self.inpathButton = ElideButton()
         self.inpathButton.setFlat(True)
-        self.inpathButton.clicked.connect(self.selectInpath)
+        # self.inpathButton.clicked.connect(parent.selectInpath)
         self.inpathButton.setToolTip("Select input vob")
-        self.inpath = ""
+        # self.inpath = ""
         
         self.outdirButton = ElideButton()
         self.outdirButton.setFlat(True)
-        self.outdirButton.clicked.connect(self.selectOutdir)
+        # self.outdirButton.clicked.connect(parent.selectOutdir)
         self.outdirButton.setToolTip("Select output directory")
-        self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
-        
-        self.infoWidget = CmdWidget()
-        self.runWidget = CmdWidget()
-        self.infoWidget.requestRun.connect(self._getInfo)
-        
-        self.setInfoCmd()
-        self.setRunCmd()
-        
-        self.cmdView = QTabWidget()
-        self.cmdView.addTab(self.infoWidget, "Info")
-        self.cmdView.addTab(self.runWidget, "Run")
+        # self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
         
         threadsLabel = QLabel("Threads:")
         self.threadsBox = QSpinBox()
@@ -62,19 +52,105 @@ class FfmpegWidget(QWidget):
         crfLayout.addWidget(crfLabel)
         crfLayout.addWidget(self.crfBox)
         
-        self.argsLayout = QGridLayout()
-        self.argsLayout.addWidget(self.inpathButton, 0, 0, 1, 3)
-        self.argsLayout.addWidget(self.outdirButton, 1, 0, 1, 3)
-        self.argsLayout.addWidget(threadsLabel, 2, 0)
-        self.argsLayout.addWidget(self.threadsBox, 2, 1, 1, 2)
-        self.argsLayout.addWidget(crfLabel, 3, 0)
-        self.argsLayout.addWidget(self.crfBox, 3, 1, 1, 2)
+        self.layout = QGridLayout()
+        self.layout.addWidget(self.inpathButton, 0, 0, 1, 3)
+        self.layout.addWidget(self.outdirButton, 1, 0, 1, 3)
+        self.layout.addWidget(threadsLabel, 2, 0)
+        self.layout.addWidget(self.threadsBox, 2, 1, 1, 2)
+        self.layout.addWidget(crfLabel, 3, 0)
+        self.layout.addWidget(self.crfBox, 3, 1, 1, 2)
         
-        layout = QHBoxLayout()
-        layout.addLayout(self.argsLayout)
-        layout.addWidget(self.cmdView)
+        self.setLayout(self.layout)
+
+    def getNextRowNum(self):
+        return self.layout.rowCount() + 1
+
+    def addStream(self, nextRow, num, streamType, info):
+        # TODO get values 
+        box = QCheckBox()
+        label = QLabel(f"Stream #{num}: {streamType}: {info}")
+        label.setStyleSheet("text-align: left;")
+        self.num = num
+        self.streamType = streamType
+        self.layout.addWidget(box, nextRow, 0)
+        self.layout.addWidget(label, nextRow, 1, 1, 2)
+        if streamType.lower() in ['audio', 'subtitle']:
+            nextRow += 1
+            langLabel = QLabel("Language: ")
+            langEdit = QLineEdit("eng")
+            titleLabel = QLabel("Title: ")
+            titleEdit = QLineEdit("English")
+            self.layout.addWidget(langLabel, nextRow, 1)
+            self.layout.addWidget(langEdit, nextRow, 2)
+            nextRow += 1
+            self.layout.addWidget(titleLabel, nextRow, 1)
+            self.layout.addWidget(titleEdit, nextRow, 2)
+        nextRow += 1
+        return nextRow
+
+class FfmpegWidget(HSplitter):
+    def __init__(self):
+        super().__init__()
         
-        self.setLayout(layout)
+        self.paramWidget = ParamView(self)
+        self.paramScroll = QScrollArea()
+        self.paramScroll.setWidget(self.paramWidget)
+        
+        # self.inpathButton = ElideButton()
+        # self.inpathButton.setFlat(True)
+        self.paramWidget.inpathButton.clicked.connect(self.selectInpath)
+        # self.inpathButton.setToolTip("Select input vob")
+        self.inpath = ""
+        
+        # self.outdirButton = ElideButton()
+        # self.outdirButton.setFlat(True)
+        self.paramWidget.outdirButton.clicked.connect(self.selectOutdir)
+        # self.outdirButton.setToolTip("Select output directory")
+        self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
+        
+        self.infoWidget = CmdWidget()
+        self.runWidget = CmdWidget()
+        self.infoWidget.requestRun.connect(self._getInfo)
+        
+        self.setInfoCmd()
+        self.setRunCmd()
+        
+        self.cmdView = QTabWidget()
+        self.cmdView.addTab(self.infoWidget, "Info")
+        self.cmdView.addTab(self.runWidget, "Run")
+        
+        # threadsLabel = QLabel("Threads:")
+        # self.threadsBox = QSpinBox()
+        # numCores = os.cpu_count()
+        # self.threadsBox.setMinimum(1)
+        # self.threadsBox.setMaximum(numCores)
+        # self.threadsBox.setValue(numCores)
+        # threadsLayout = QHBoxLayout()
+        # threadsLayout.addWidget(threadsLabel)
+        # threadsLayout.addWidget(self.threadsBox)
+        
+        # crfLabel = QLabel("CRF:")
+        # self.crfBox = QSpinBox()
+        # self.crfBox.setValue(21)
+        # self.crfBox.setMinimum(0)
+        # self.crfBox.setMaximum(51)
+        # crfLayout = QHBoxLayout()
+        # crfLayout.addWidget(crfLabel)
+        # crfLayout.addWidget(self.crfBox)
+        
+        # self.argsLayout = QGridLayout()
+        # self.argsLayout.addWidget(self.inpathButton, 0, 0, 1, 3)
+        # self.argsLayout.addWidget(self.outdirButton, 1, 0, 1, 3)
+        # self.argsLayout.addWidget(threadsLabel, 2, 0)
+        # self.argsLayout.addWidget(self.threadsBox, 2, 1, 1, 2)
+        # self.argsLayout.addWidget(crfLabel, 3, 0)
+        # self.argsLayout.addWidget(self.crfBox, 3, 1, 1, 2)
+        
+        # layout = QHBoxLayout()
+        self.addWidget(self.paramScroll)
+        self.addWidget(self.cmdView)
+        
+        # self.setLayout(layout)
         
         self.infoThread = QThread()
         self.infoWorker = SubprocessWorker()
@@ -93,7 +169,7 @@ class FfmpegWidget(QWidget):
     @inpath.setter
     def inpath(self, inpath):
         self._inpath = inpath
-        self.inpathButton.setText(f"Input: {inpath}")
+        self.paramWidget.inpathButton.setText(f"Input: {inpath}")
         self.setInfoCmd()
         self.setRunCmd()
         
@@ -112,7 +188,7 @@ class FfmpegWidget(QWidget):
     @outdir.setter
     def outdir(self, outdir):
         self._outdir = outdir
-        self.outdirButton.setText(f"Out: {outdir}")
+        self.paramWidget.outdirButton.setText(f"Out: {outdir}")
         self.setRunCmd()
         
     def selectOutdir(self):
@@ -153,31 +229,33 @@ class FfmpegWidget(QWidget):
         
     def _getStreamInfo(self):
         # TODO remove existing stream widgets and remake
-        nextRow = self.argsLayout.rowCount() + 1
+        nextRow = self.paramWidget.getNextRowNum()# self.argsLayout.rowCount() + 1
         if (text := self.infoWidget.text):
             i = re.finditer(r"Stream #(?P<stream>\d+:\d+)\[0x\w+\]: (?P<type>\w+): (?P<info>.*)", text)
             for m in i:
-                nextRow = self.addStream(self.argsLayout, nextRow, m.group('stream'), m.group('type'), m.group('info'))
+                nextRow = self.paramWidget.addStream(nextRow, m.group('stream'), m.group('type'), m.group('info'))
+                # nextRow = self.addStream(self.argsLayout, nextRow, m.group('stream'), m.group('type'), m.group('info'))
+        
 
-    def addStream(self, layout, nextRow, num, streamType, info):
-        # TODO get values 
-        box = QCheckBox()
-        label = QLabel(f"Stream #{num}: {streamType}: {info}")
-        label.setStyleSheet("text-align: left;")
-        self.num = num
-        self.streamType = streamType
-        layout.addWidget(box, nextRow, 0)
-        layout.addWidget(label, nextRow, 1, 1, 2)
-        if streamType.lower() in ['audio', 'subtitle']:
-            nextRow += 1
-            langLabel = QLabel("Language: ")
-            langEdit = QLineEdit("eng")
-            titleLabel = QLabel("Title: ")
-            titleEdit = QLineEdit("English")
-            layout.addWidget(langLabel, nextRow, 1)
-            layout.addWidget(langEdit, nextRow, 2)
-            nextRow += 1
-            layout.addWidget(titleLabel, nextRow, 1)
-            layout.addWidget(titleEdit, nextRow, 2)
-        nextRow += 1
-        return nextRow
+    # def addStream(self, layout, nextRow, num, streamType, info):
+    #     # TODO get values 
+    #     box = QCheckBox()
+    #     label = QLabel(f"Stream #{num}: {streamType}: {info}")
+    #     label.setStyleSheet("text-align: left;")
+    #     self.num = num
+    #     self.streamType = streamType
+    #     layout.addWidget(box, nextRow, 0)
+    #     layout.addWidget(label, nextRow, 1, 1, 2)
+    #     if streamType.lower() in ['audio', 'subtitle']:
+    #         nextRow += 1
+    #         langLabel = QLabel("Language: ")
+    #         langEdit = QLineEdit("eng")
+    #         titleLabel = QLabel("Title: ")
+    #         titleEdit = QLineEdit("English")
+    #         layout.addWidget(langLabel, nextRow, 1)
+    #         layout.addWidget(langEdit, nextRow, 2)
+    #         nextRow += 1
+    #         layout.addWidget(titleLabel, nextRow, 1)
+    #         layout.addWidget(titleEdit, nextRow, 2)
+    #     nextRow += 1
+    #     return nextRow

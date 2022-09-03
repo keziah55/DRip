@@ -3,12 +3,13 @@ from qtpy.QtWidgets import (QFileDialog, QPushButton, QWidget, QTabWidget,
                             QCheckBox)
 from qtpy.QtCore import Qt, QTimer, Slot, Signal, QThread
 from qtpy.QtGui import QIcon
+from customQObjects.widgets import HSplitter
 from .cmdwidget import CmdWidget
 from .subprocessthread import SubprocessWorker
 import os.path
 import re
 
-class DvdBackupWidget(QWidget):
+class DvdBackupWidget(HSplitter):
     """ Widget to run 'dvdbackup' commands and show the output """
     def __init__(self):
         super().__init__()
@@ -67,11 +68,11 @@ class DvdBackupWidget(QWidget):
         argsLayout.addWidget(self.titleBox)
         argsLayout.addStretch()
         
-        layout = QHBoxLayout()
-        layout.addLayout(argsLayout)
-        layout.addWidget(self.cmdView)
+        # layout = QHBoxLayout()
+        self.addLayout(argsLayout)
+        self.addWidget(self.cmdView)
         
-        self.setLayout(layout)
+        # self.setLayout(layout)
         
         self.infoThread = QThread()
         self.infoWorker = SubprocessWorker()
