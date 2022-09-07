@@ -299,9 +299,9 @@ class FfmpegWidget(HSplitter):
     
     def _paramChanged(self, name, value):
         if name == "inpath":
-           self._inpath = value
+            self._inpath = value
         if name == "outdir":
-             self._outdir = value
+              self._outdir = value
         self.setRunCmd()
             
     def setInfoCmd(self):

@@ -1,6 +1,6 @@
 from qtpy.QtWidgets import (QFileDialog, QPushButton, QTabWidget, QSpinBox, QWidget,
                             QMessageBox, QCheckBox, QGridLayout, QLabel, QScrollArea)
-from qtpy.QtCore import Slot, QThread
+from qtpy.QtCore import Slot, QThread, Signal
 from qtpy.QtGui import QIcon
 from customQObjects.widgets import HSplitter
 from .cmdwidget import CmdWidget
@@ -11,17 +11,10 @@ import re
 
 class ParamView(QWidget):
     
-    def __init__(self, parent):
+    valueChanged = Signal(str, object)
+    
+    def __init__(self,):
         super().__init__()
-        
-        
-
-class DvdBackupWidget(HSplitter):
-    """ Widget to run 'dvdbackup' commands and show the output """
-    def __init__(self):
-        super().__init__()
-        
-        self.extraArgs = ["-v", "-p"]
         
         self.deviceButton = ElideButton()
         self.deviceButton.setFlat(True)
@@ -38,10 +31,73 @@ class DvdBackupWidget(HSplitter):
         self.titleBox = QSpinBox()
         self.titleBox.setMinimum(1)
         # self.titleBox.setPrefix("Title: ")
-        self.titleBox.valueChanged.connect(self.setRunCmd)
+        self.titleBox.valueChanged.connect(lambda value: self.valueChanged.emit("title", value))# self.setRunCmd)
         self.titleBox.setToolTip("Set title to be ripped")
         self.titleNum = 1
         titleLabel = QLabel("Title: ")
+        
+        for widget in [self.deviceButton, self.outdirButton, titleLabel]:
+            widget.setStyleSheet("text-align: left;")
+        
+        argsLayout = QGridLayout()
+        argsLayout.addWidget(self.deviceButton, 0, 0, 1, 3)
+        argsLayout.addWidget(self.outdirButton, 1, 0, 1, 3)
+        argsLayout.addWidget(titleLabel, 2, 0)
+        argsLayout.addWidget(self.titleBox, 2, 1, 1, 2)
+        argsLayout.setRowStretch(argsLayout.rowCount(), 1)
+        
+        self.setLayout(argsLayout)
+        
+    @property
+    def device(self):
+        return self._device
+    
+    @device.setter
+    def device(self, dev):
+        self._device = dev
+        self.deviceButton.setText(f"DVD device: {dev}")
+        self.valueChanged.emit("device", dev)
+        
+    def selectDevice(self):
+        filename = QFileDialog.getOpenFileName(self, "Select dvd device", "/dev")
+        if isinstance(filename, tuple):
+            filename = filename[0]
+        if filename:
+            self.device = filename
+      
+    ## DVDBACKUP OUTPUT DIR
+    @property
+    def outdir(self):
+        return self._outdir
+    
+    @outdir.setter
+    def outdir(self, outdir):
+        self._outdir = outdir
+        self.outdirButton.setText(f"Out: {outdir}")
+        # self.setRunCmd()
+        self.valueChanged.emit("outdir", outdir)
+        
+    def selectOutdir(self):
+        filename = QFileDialog.getExistingDirectory(self, "Select output directory", 
+                                                    os.path.expanduser('~'))
+        if isinstance(filename, tuple):
+            filename = filename[0]
+        if filename:
+            self.outdir = filename
+
+class DvdBackupWidget(HSplitter):
+    """ Widget to run 'dvdbackup' commands and show the output """
+    def __init__(self):
+        super().__init__()
+        
+        self.extraArgs = ["-v", "-p"]
+        
+        self.paramWidget = ParamView()
+        paramScroll = QScrollArea()
+        paramScroll.setWidget(self.paramWidget)
+        paramScroll.setWidgetResizable(True)
+        
+        self.paramWidget.valueChanged.connect(self._paramChanged)
         
         self.infoWidget = CmdWidget()
         self.runWidget = CmdWidget()
@@ -70,17 +126,8 @@ class DvdBackupWidget(HSplitter):
         self.cmdView.addTab(self.runWidget, "Run")
         self.cmdView.addTab(self.catWidget, "Cat")
         
-        for widget in [self.deviceButton, self.outdirButton, titleLabel]:
-            widget.setStyleSheet("text-align: left;")
-        
-        argsLayout = QGridLayout()
-        argsLayout.addWidget(self.deviceButton, 0, 0, 1, 3)
-        argsLayout.addWidget(self.outdirButton, 1, 0, 1, 3)
-        argsLayout.addWidget(titleLabel, 2, 0)
-        argsLayout.addWidget(self.titleBox, 2, 1, 1, 2)
-        argsLayout.setRowStretch(argsLayout.rowCount(), 1)
-        
-        self.addLayout(argsLayout)
+        # self.addLayout(argsLayout)
+        self.addWidget(paramScroll)
         self.addWidget(self.cmdView)
         
         self.infoThread = QThread()
@@ -120,17 +167,9 @@ class DvdBackupWidget(HSplitter):
     @device.setter
     def device(self, dev):
         self._device = dev
-        self.deviceButton.setText(f"DVD device: {dev}")
         self.setInfoCmd()
         self.setRunCmd()
         
-    def selectDevice(self):
-        filename = QFileDialog.getOpenFileName(self, "Select dvd device", "/dev")
-        if isinstance(filename, tuple):
-            filename = filename[0]
-        if filename:
-            self.device = filename
-      
     ## DVDBACKUP OUTPUT DIR
     @property
     def outdir(self):
@@ -139,17 +178,17 @@ class DvdBackupWidget(HSplitter):
     @outdir.setter
     def outdir(self, outdir):
         self._outdir = outdir
-        self.outdirButton.setText(f"Out: {outdir}")
         self.setRunCmd()
         
-    def selectOutdir(self):
-        filename = QFileDialog.getExistingDirectory(self, "Select output directory", 
-                                                    os.path.expanduser('~'))
-        if isinstance(filename, tuple):
-            filename = filename[0]
-        if filename:
-            self.outdir = filename
-        
+    def _paramChanged(self, name, value):
+        # if (a:=getattr(self, name, None)) is not None and isinstance(a, property) and a.fset is not None:
+        #     setattr(self, name, value)
+        if name == "device":
+            self.device = value
+        elif name == "outdir":
+            self.outdir = value
+        self.setRunCmd()
+    
     ## TITLE NUM TO BACK UP
     @property
     def titleNum(self):
@@ -189,7 +228,8 @@ class DvdBackupWidget(HSplitter):
         
     @property
     def runCmd(self):
-        return ["dvdbackup", "-i", self.device, "-o", self.outdir, "-t", self.titleNum] + self.extraArgs
+        titleNum = self.paramWidget.titleBox.value()
+        return ["dvdbackup", "-i", self.device, "-o", self.outdir, "-t", titleNum] + self.extraArgs
         
     def _run(self):
         if not os.path.exists(self.device):
