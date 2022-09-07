@@ -1,20 +1,13 @@
-from qtpy.QtWidgets import (QLabel, QFileDialog, QPushButton, QWidget, QFrame, 
-                            QInputDialog, QGridLayout, QPlainTextEdit, QTabWidget,
-                            QHBoxLayout, QVBoxLayout, QCheckBox, QLineEdit,
-                            QSpinBox, QScrollArea)
-from qtpy.QtCore import Qt, QTimer, Signal, Slot, QThread, QObject
-from qtpy.QtGui import QIcon
-from customQObjects.widgets import ElideMixin, HSplitter
+from qtpy.QtWidgets import (QLabel, QFileDialog, QWidget, QGridLayout, QTabWidget, 
+                            QHBoxLayout, QCheckBox, QLineEdit, QSpinBox, QScrollArea)
+from qtpy.QtCore import Signal, QThread
+from customQObjects.widgets import HSplitter
 from .cmdwidget import CmdWidget
 from .subprocessthread import SubprocessWorker
+from .elidebutton import ElideButton
 import os
 import re
 from dataclasses import dataclass, field
-
-class ElideButton(ElideMixin, QPushButton): 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setStyleSheet("text-align: left;")
         
 @dataclass
 class StreamInfo:
@@ -69,7 +62,7 @@ class ParamView(QWidget):
     
     valueChanged = Signal(str, object)
     
-    def __init__(self, parent):
+    def __init__(self):
         super().__init__()
         
         self.inpathButton = ElideButton()
@@ -116,14 +109,12 @@ class ParamView(QWidget):
         self.layout.addWidget(crfLabel, 3, 0)
         self.layout.addWidget(self.crfBox, 3, 1, 1, 2)
         
+        self._streamLayoutRowNum = 4
+        
         self._stretchItemRow = self.layout.rowCount()
         self.layout.setRowStretch(self._stretchItemRow, 1)
         
         self.setLayout(self.layout)
-
-    @property
-    def nextRowNum(self):
-        return self.layout.rowCount() + 1
 
     def addStream(self, num, streamType, info):
         
@@ -139,7 +130,7 @@ class ParamView(QWidget):
         label = QLabel(streamInfo.label)
         label.setStyleSheet("text-align: left;")
         
-        nextRow = self.nextRowNum
+        nextRow = self.layout.rowCount() + 1
         self.layout.addWidget(box, nextRow, 0)
         self.layout.addWidget(label, nextRow, 1, 1, 2)
         inc = 0
@@ -171,8 +162,17 @@ class ParamView(QWidget):
         self.streamInfo.append(streamInfo)
         
         # add stretch to last row
-        self._stretchItemRow += inc
+        self._stretchItemRow += inc + 1
         self.layout.setRowStretch(self._stretchItemRow, 1)
+        
+    def _removeStreams(self):
+        for row in range(self._streamLayoutRowNum, self.layout.rowCount()):
+            for col in range(self.layout.columnCount()):
+                item = self.layout.itemAtPosition(row, col)
+                if item is not None:
+                    w = item.widget()
+                    self.layout.removeWidget(w)
+                    w.deleteLater()
         
     @property
     def inpath(self):
@@ -182,10 +182,7 @@ class ParamView(QWidget):
     def inpath(self, inpath):
         self._inpath = inpath
         self.inpathButton.setText(f"Input: {inpath}")
-        # self.setInfoCmd()
-        # self.setRunCmd()
         self.valueChanged.emit("inpath", inpath)
-        
         
     def selectInpath(self):
         filename = QFileDialog.getOpenFileName(self, "Select input vob", self.outdir)
@@ -232,17 +229,14 @@ class FfmpegWidget(HSplitter):
     def __init__(self):
         super().__init__()
         
-        self.paramWidget = ParamView(self)
-        self.paramScroll = QScrollArea()
-        self.paramScroll.setWidget(self.paramWidget)
-        self.paramScroll.setWidgetResizable(True)
+        self.paramWidget = ParamView()
+        paramScroll = QScrollArea()
+        paramScroll.setWidget(self.paramWidget)
+        paramScroll.setWidgetResizable(True)
         
         self.paramWidget.valueChanged.connect(self._paramChanged)
         
-        # self.paramWidget.inpathButton.clicked.connect(self.selectInpath)
         self.inpath = ""
-        
-        # self.paramWidget.outdirButton.clicked.connect(self.selectOutdir)
         self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
         
         self.infoWidget = CmdWidget()
@@ -258,12 +252,8 @@ class FfmpegWidget(HSplitter):
         self.cmdView.addTab(self.infoWidget, "Info")
         self.cmdView.addTab(self.runWidget, "Run")
         
-        # layout = QHBoxLayout()
-        self.addWidget(self.paramScroll)
-        # self.addWidget(self.paramWidget)
+        self.addWidget(paramScroll)
         self.addWidget(self.cmdView)
-        
-        # self.setLayout(layout)
         
         self.infoThread = QThread()
         self.infoWorker = SubprocessWorker()
@@ -281,14 +271,12 @@ class FfmpegWidget(HSplitter):
         self.runWorker.stdout.connect(self.runWidget.appendText)
         self.runThread.started.connect(self.runWorker.start)
         self.runThread.started.connect(self.runWidget.setRunning)
-        self.runWorker.processComplete.connect(self.runThread.quit)
+        self.runWorker.processComplete.connect(self._runFinished)
         self.runThread.finished.connect(self.runWidget.setRunComplete)
         
     @property
     def runCmd(self):
          return self.paramWidget.getParams()
-        # cmd = self.paramWidget.getParams()
-        # self.runWidget.setCmd(cmd)
         
     @property
     def inpath(self):
@@ -322,16 +310,16 @@ class FfmpegWidget(HSplitter):
         except:
             # on initialisation, stuff won't exist yet
             pass
-            
+        
     @property
     def infoCmd(self):
         return ["ffmpeg", "-analyzeduration", "100M", "-probesize", "100M", "-i", self.inpath]
-        
+    
     def _getInfo(self):
-        
         if not os.path.exists(self.inpath):
             raise ValueError
             
+        self.paramWidget._removeStreams()
         self.infoWorker.cmd = self.infoCmd
         self.infoThread.start()
         
@@ -352,8 +340,11 @@ class FfmpegWidget(HSplitter):
         self.runWorker.cmd = self.runCmd
         self.runThread.start()
         
+    def _runFinished(self):
+        self.runThread.quit()
+        self.activateWindow()
+        
     def _setStreamInfo(self):
-        # TODO remove existing stream widgets and remake
         if (text := self.infoWidget.text):
             i = re.finditer(r"Stream #(?P<stream>\d+:\d+)\[0x\w+\]: (?P<type>\w+): (?P<info>.*)", text)
             for m in i:

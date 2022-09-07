@@ -1,13 +1,20 @@
-from qtpy.QtWidgets import (QFileDialog, QPushButton, QWidget, QTabWidget,
-                            QHBoxLayout, QVBoxLayout, QSpinBox, QMessageBox,
-                            QCheckBox)
-from qtpy.QtCore import Qt, QTimer, Slot, Signal, QThread
+from qtpy.QtWidgets import (QFileDialog, QPushButton, QTabWidget, QSpinBox, QWidget,
+                            QMessageBox, QCheckBox, QGridLayout, QLabel, QScrollArea)
+from qtpy.QtCore import Slot, QThread
 from qtpy.QtGui import QIcon
 from customQObjects.widgets import HSplitter
 from .cmdwidget import CmdWidget
 from .subprocessthread import SubprocessWorker
+from .elidebutton import ElideButton
 import os.path
 import re
+
+class ParamView(QWidget):
+    
+    def __init__(self, parent):
+        super().__init__()
+        
+        
 
 class DvdBackupWidget(HSplitter):
     """ Widget to run 'dvdbackup' commands and show the output """
@@ -16,13 +23,13 @@ class DvdBackupWidget(HSplitter):
         
         self.extraArgs = ["-v", "-p"]
         
-        self.deviceButton = QPushButton()
+        self.deviceButton = ElideButton()
         self.deviceButton.setFlat(True)
         self.deviceButton.clicked.connect(self.selectDevice)
         self.deviceButton.setToolTip("Select dvd device")
         self.device = "/dev/sr0"
         
-        self.outdirButton = QPushButton()
+        self.outdirButton = ElideButton()
         self.outdirButton.setFlat(True)
         self.outdirButton.clicked.connect(self.selectOutdir)
         self.outdirButton.setToolTip("Select output directory")
@@ -30,10 +37,11 @@ class DvdBackupWidget(HSplitter):
         
         self.titleBox = QSpinBox()
         self.titleBox.setMinimum(1)
-        self.titleBox.setPrefix("Title: ")
+        # self.titleBox.setPrefix("Title: ")
         self.titleBox.valueChanged.connect(self.setRunCmd)
         self.titleBox.setToolTip("Set title to be ripped")
         self.titleNum = 1
+        titleLabel = QLabel("Title: ")
         
         self.infoWidget = CmdWidget()
         self.runWidget = CmdWidget()
@@ -62,17 +70,18 @@ class DvdBackupWidget(HSplitter):
         self.cmdView.addTab(self.runWidget, "Run")
         self.cmdView.addTab(self.catWidget, "Cat")
         
-        argsLayout = QVBoxLayout()
-        argsLayout.addWidget(self.deviceButton)
-        argsLayout.addWidget(self.outdirButton)
-        argsLayout.addWidget(self.titleBox)
-        argsLayout.addStretch()
+        for widget in [self.deviceButton, self.outdirButton, titleLabel]:
+            widget.setStyleSheet("text-align: left;")
         
-        # layout = QHBoxLayout()
+        argsLayout = QGridLayout()
+        argsLayout.addWidget(self.deviceButton, 0, 0, 1, 3)
+        argsLayout.addWidget(self.outdirButton, 1, 0, 1, 3)
+        argsLayout.addWidget(titleLabel, 2, 0)
+        argsLayout.addWidget(self.titleBox, 2, 1, 1, 2)
+        argsLayout.setRowStretch(argsLayout.rowCount(), 1)
+        
         self.addLayout(argsLayout)
         self.addWidget(self.cmdView)
-        
-        # self.setLayout(layout)
         
         self.infoThread = QThread()
         self.infoWorker = SubprocessWorker()

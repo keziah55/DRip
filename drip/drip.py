@@ -1,11 +1,4 @@
-from qtpy.QtWidgets import (QMainWindow, QDockWidget, QAction, QSizePolicy, 
-                             QMessageBox, QLabel, QFileDialog, QPushButton,
-                             QHBoxLayout, QVBoxLayout, QWidget, QFrame, QInputDialog,
-                             QGridLayout, QPlainTextEdit, QTabWidget)
-from qtpy.QtCore import Qt, QTimer, Slot
-from qtpy.QtGui import QIcon
-import os.path
-
+from qtpy.QtWidgets import QTabWidget
 from .dvdbackupwidget import DvdBackupWidget
 from .ffmpegwidget import FfmpegWidget
 
