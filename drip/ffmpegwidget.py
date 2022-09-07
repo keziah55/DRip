@@ -2,7 +2,7 @@ from qtpy.QtWidgets import (QLabel, QFileDialog, QPushButton, QWidget, QFrame,
                             QInputDialog, QGridLayout, QPlainTextEdit, QTabWidget,
                             QHBoxLayout, QVBoxLayout, QCheckBox, QLineEdit,
                             QSpinBox, QScrollArea)
-from qtpy.QtCore import Qt, QTimer, Slot, QThread, QObject
+from qtpy.QtCore import Qt, QTimer, Signal, Slot, QThread, QObject
 from qtpy.QtGui import QIcon
 from customQObjects.widgets import ElideMixin, HSplitter
 from .cmdwidget import CmdWidget
@@ -67,20 +67,22 @@ class StreamInfo:
 
 class ParamView(QWidget):
     
+    valueChanged = Signal(str, object)
+    
     def __init__(self, parent):
         super().__init__()
         
         self.inpathButton = ElideButton()
         self.inpathButton.setFlat(True)
-        # self.inpathButton.clicked.connect(parent.selectInpath)
+        self.inpathButton.clicked.connect(self.selectInpath)
         self.inpathButton.setToolTip("Select input vob")
-        # self.inpath = ""
+        self.inpath = ""
         
         self.outdirButton = ElideButton()
         self.outdirButton.setFlat(True)
-        # self.outdirButton.clicked.connect(parent.selectOutdir)
+        self.outdirButton.clicked.connect(self.selectOutdir)
         self.outdirButton.setToolTip("Select output directory")
-        # self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
+        self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
         
         self.streamInfo = []
         
@@ -102,6 +104,9 @@ class ParamView(QWidget):
         crfLayout = QHBoxLayout()
         crfLayout.addWidget(crfLabel)
         crfLayout.addWidget(self.crfBox)
+        
+        self.threadsBox.valueChanged.connect(lambda value: self.valueChanged.emit("threads", value))
+        self.crfBox.valueChanged.connect(lambda value: self.valueChanged.emit("crf", value))
         
         self.layout = QGridLayout()
         self.layout.addWidget(self.inpathButton, 0, 0, 1, 3)
@@ -129,6 +134,7 @@ class ParamView(QWidget):
         
         box = QCheckBox()
         box.stateChanged.connect(streamInfo.setSelected)
+        box.stateChanged.connect(lambda state: self.valueChanged.emit(num, state))
         
         label = QLabel(streamInfo.label)
         label.setStyleSheet("text-align: left;")
@@ -157,6 +163,9 @@ class ParamView(QWidget):
             langEdit.textChanged.connect(streamInfo.setMetadataLanguage)
             titleEdit.textChanged.connect(streamInfo.setMetadataTitle)
             
+            langEdit.textChanged.connect(lambda text: self.valueChanged.emit(f"{num}-language", text))
+            titleEdit.textChanged.connect(lambda text: self.valueChanged.emit(f"{num}-title", text))
+            
             streamInfo.setMetadata(language=language, title=title)
             
         self.streamInfo.append(streamInfo)
@@ -165,8 +174,47 @@ class ParamView(QWidget):
         self._stretchItemRow += inc
         self.layout.setRowStretch(self._stretchItemRow, 1)
         
-    def getParams(self, inpath, outpath):
-        cmd = ["ffmpeg", "-analyzeduration", "100M", "-probesize", "100M", "-i", inpath]
+    @property
+    def inpath(self):
+        return self._inpath
+    
+    @inpath.setter
+    def inpath(self, inpath):
+        self._inpath = inpath
+        self.inpathButton.setText(f"Input: {inpath}")
+        # self.setInfoCmd()
+        # self.setRunCmd()
+        self.valueChanged.emit("inpath", inpath)
+        
+        
+    def selectInpath(self):
+        filename = QFileDialog.getOpenFileName(self, "Select input vob", self.outdir)
+        if isinstance(filename, tuple):
+            filename = filename[0]
+        if filename:
+            self.inpath = filename
+            
+    @property
+    def outdir(self):
+        return self._outdir
+    
+    @outdir.setter
+    def outdir(self, outdir):
+        self._outdir = outdir
+        self.outdirButton.setText(f"Out: {outdir}")
+        self.valueChanged.emit("outdir", outdir)
+        # self.setRunCmd()
+        
+    def selectOutdir(self):
+        filename = QFileDialog.getExistingDirectory(self, "Select output directory", 
+                                                    self.outdir)
+        if isinstance(filename, tuple):
+            filename = filename[0]
+        if filename:
+            self.outdir = filename
+        
+    def getParams(self):
+        cmd = ["ffmpeg", "-analyzeduration", "100M", "-probesize", "100M", "-i", self.inpath]
         for streamInfo in self.streamInfo:
             info = streamInfo.getStreamInfo()
             if info is not None:
@@ -176,7 +224,7 @@ class ParamView(QWidget):
                "-crf", str(self.crfBox.value()),
                "-codec:a", "copy",
                "-codec:s", "copy",
-               os.path.join(outpath, "output.mkv")]
+               os.path.join(self.outdir, "output.mkv")]
         return cmd
         
 
@@ -189,17 +237,19 @@ class FfmpegWidget(HSplitter):
         self.paramScroll.setWidget(self.paramWidget)
         self.paramScroll.setWidgetResizable(True)
         
-        self.paramWidget.inpathButton.clicked.connect(self.selectInpath)
+        self.paramWidget.valueChanged.connect(self._paramChanged)
+        
+        # self.paramWidget.inpathButton.clicked.connect(self.selectInpath)
         self.inpath = ""
         
-        self.paramWidget.outdirButton.clicked.connect(self.selectOutdir)
+        # self.paramWidget.outdirButton.clicked.connect(self.selectOutdir)
         self.outdir = os.path.join(os.path.expanduser('~'), "Videos", "temp")
         
         self.infoWidget = CmdWidget()
         self.runWidget = CmdWidget()
         self.infoWidget.requestRun.connect(self._getInfo)
         
-        self.runWidget.requestRun.connect(self._getRunParams)
+        self.runWidget.requestRun.connect(self._run)
         
         self.setInfoCmd()
         self.setRunCmd()
@@ -225,9 +275,20 @@ class FfmpegWidget(HSplitter):
         self.infoThread.finished.connect(self.infoWidget.setRunComplete)
         self.infoThread.finished.connect(self._setStreamInfo)
         
-    def _getRunParams(self):
-        cmd = self.paramWidget.getParams(self.inpath, self.outdir)
-        self.runWidget.setCmd(cmd)
+        self.runThread = QThread()
+        self.runWorker = SubprocessWorker()
+        self.runWorker.moveToThread(self.runThread)
+        self.runWorker.stdout.connect(self.runWidget.appendText)
+        self.runThread.started.connect(self.runWorker.start)
+        self.runThread.started.connect(self.runWidget.setRunning)
+        self.runWorker.processComplete.connect(self.runThread.quit)
+        self.runThread.finished.connect(self.runWidget.setRunComplete)
+        
+    @property
+    def runCmd(self):
+         return self.paramWidget.getParams()
+        # cmd = self.paramWidget.getParams()
+        # self.runWidget.setCmd(cmd)
         
     @property
     def inpath(self):
@@ -236,16 +297,8 @@ class FfmpegWidget(HSplitter):
     @inpath.setter
     def inpath(self, inpath):
         self._inpath = inpath
-        self.paramWidget.inpathButton.setText(f"Input: {inpath}")
         self.setInfoCmd()
         self.setRunCmd()
-        
-    def selectInpath(self):
-        filename = QFileDialog.getOpenFileName(self, "Select input vob", self.outdir)
-        if isinstance(filename, tuple):
-            filename = filename[0]
-        if filename:
-            self.inpath = filename
             
     @property
     def outdir(self):
@@ -254,16 +307,14 @@ class FfmpegWidget(HSplitter):
     @outdir.setter
     def outdir(self, outdir):
         self._outdir = outdir
-        self.paramWidget.outdirButton.setText(f"Out: {outdir}")
         self.setRunCmd()
-        
-    def selectOutdir(self):
-        filename = QFileDialog.getExistingDirectory(self, "Select output directory", 
-                                                    self.outdir)
-        if isinstance(filename, tuple):
-            filename = filename[0]
-        if filename:
-            self.outdir = filename
+    
+    def _paramChanged(self, name, value):
+        if name == "inpath":
+           self._inpath = value
+        if name == "outdir":
+             self._outdir = value
+        self.setRunCmd()
             
     def setInfoCmd(self):
         try:
@@ -276,7 +327,6 @@ class FfmpegWidget(HSplitter):
     def infoCmd(self):
         return ["ffmpeg", "-analyzeduration", "100M", "-probesize", "100M", "-i", self.inpath]
         
-        
     def _getInfo(self):
         
         if not os.path.exists(self.inpath):
@@ -285,13 +335,22 @@ class FfmpegWidget(HSplitter):
         self.infoWorker.cmd = self.infoCmd
         self.infoThread.start()
         
-        
     def setRunCmd(self):
         try:
             self.runWidget.setCmd(self.runCmd)
         except:
             # on initialisation, stuff won't exist yet
             pass
+        
+    def _run(self):
+        if not os.path.exists(self.inpath):
+            raise ValueError
+            
+        if not os.path.exists(self.outdir):
+            raise ValueError
+            
+        self.runWorker.cmd = self.runCmd
+        self.runThread.start()
         
     def _setStreamInfo(self):
         # TODO remove existing stream widgets and remake

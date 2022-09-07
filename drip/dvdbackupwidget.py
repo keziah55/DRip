@@ -180,7 +180,6 @@ class DvdBackupWidget(HSplitter):
         
     @property
     def runCmd(self):
-        # return ['echo', '"hello"']
         return ["dvdbackup", "-i", self.device, "-o", self.outdir, "-t", self.titleNum] + self.extraArgs
         
     def _run(self):
