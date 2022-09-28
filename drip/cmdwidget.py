@@ -100,5 +100,5 @@ class CmdWidget(QWidget):
                 
     def copyCommand(self):
         """ Copy command to mouse selection """
-        if (text := self.cmdLabel.text()):
+        if (text := self.cmdLabel.fullText):
             QApplication.clipboard().setText(text, mode=QClipboard.Selection)

@@ -31,7 +31,7 @@ class ParamView(QWidget):
         self.titleBox = QSpinBox()
         self.titleBox.setMinimum(1)
         # self.titleBox.setPrefix("Title: ")
-        self.titleBox.valueChanged.connect(lambda value: self.valueChanged.emit("title", value))# self.setRunCmd)
+        self.titleBox.valueChanged.connect(lambda value: self.valueChanged.emit("title", str(value)))# self.setRunCmd)
         self.titleBox.setToolTip("Set title to be ripped")
         self.titleNum = 1
         titleLabel = QLabel("Title: ")
@@ -162,22 +162,20 @@ class DvdBackupWidget(HSplitter):
     ## DVD DEVICE
     @property
     def device(self):
-        return self._device
+        return self.paramWidget.device
     
     @device.setter
     def device(self, dev):
-        self._device = dev
         self.setInfoCmd()
         self.setRunCmd()
         
     ## DVDBACKUP OUTPUT DIR
     @property
     def outdir(self):
-        return self._outdir
+        return self.paramWidget.outdir
     
     @outdir.setter
     def outdir(self, outdir):
-        self._outdir = outdir
         self.setRunCmd()
         
     def _paramChanged(self, name, value):
@@ -228,7 +226,7 @@ class DvdBackupWidget(HSplitter):
         
     @property
     def runCmd(self):
-        titleNum = self.paramWidget.titleBox.value()
+        titleNum = str(self.paramWidget.titleBox.value())
         return ["dvdbackup", "-i", self.device, "-o", self.outdir, "-t", titleNum] + self.extraArgs
         
     def _run(self):
