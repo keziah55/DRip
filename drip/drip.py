@@ -11,6 +11,8 @@ class DRip(QTabWidget):
         
         self.addTab(self.dvdbackup, "dvdbackup")
         self.addTab(self.ffmpeg, "ffmpeg")
+        
+        self.dvdbackup.vobPathChanged.connect(self.ffmpeg.vobPathChanged)
     
             
         

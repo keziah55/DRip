@@ -303,6 +303,10 @@ class FfmpegWidget(HSplitter):
         if name == "outdir":
               self._outdir = value
         self.setRunCmd()
+        
+    def vobPathChanged(self, path):
+        self.paramWidget.inpath = os.path.join(path, "output.vob")
+        self.paramWidget.outdir = path
             
     def setInfoCmd(self):
         try:

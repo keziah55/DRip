@@ -1,8 +1,9 @@
 from qtpy.QtWidgets import (QFileDialog, QPushButton, QTabWidget, QSpinBox, QWidget,
-                            QMessageBox, QCheckBox, QGridLayout, QLabel, QScrollArea)
+                            QMessageBox, QCheckBox, QGridLayout, QLabel, QScrollArea,
+                            QPlainTextEdit)
 from qtpy.QtCore import Slot, QThread, Signal
 from qtpy.QtGui import QIcon
-from customQObjects.widgets import HSplitter
+from customQObjects.widgets import HSplitter, VSplitter
 from .cmdwidget import CmdWidget
 from .subprocessthread import SubprocessWorker
 from .elidebutton import ElideButton
@@ -84,9 +85,30 @@ class ParamView(QWidget):
             filename = filename[0]
         if filename:
             self.outdir = filename
+            
+class InfoView(VSplitter):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.infoWidget = CmdWidget(*args, **kwargs)
+        self.summaryWidget = QPlainTextEdit()
+        self.summaryWidget.setReadOnly(True)
+        
+        # splitter = VSplitter()
+        self.addWidget(self.infoWidget)
+        self.addWidget(self.summaryWidget)
+        
+    def setSummaryInfo(self, text):
+        self.summaryWidget.setPlainText(text)
+        
+    def __getattr__(self, name):
+        return getattr(self.infoWidget, name)
+        
 
 class DvdBackupWidget(HSplitter):
     """ Widget to run 'dvdbackup' commands and show the output """
+    
+    vobPathChanged = Signal(str)
+    
     def __init__(self):
         super().__init__()
         
@@ -99,7 +121,8 @@ class DvdBackupWidget(HSplitter):
         
         self.paramWidget.valueChanged.connect(self._paramChanged)
         
-        self.infoWidget = CmdWidget()
+        self.infoView = InfoView()
+        self.infoWidget = self.infoView.infoWidget #CmdWidget()
         self.runWidget = CmdWidget()
         self.catWidget = CmdWidget()
         self.infoWidget.requestRun.connect(self._getInfo)
@@ -122,7 +145,7 @@ class DvdBackupWidget(HSplitter):
         self.resetCatCmd()
         
         self.cmdView = QTabWidget()
-        self.cmdView.addTab(self.infoWidget, "Info")
+        self.cmdView.addTab(self.infoView, "Info")
         self.cmdView.addTab(self.runWidget, "Run")
         self.cmdView.addTab(self.catWidget, "Cat")
         
@@ -138,6 +161,7 @@ class DvdBackupWidget(HSplitter):
         self.infoThread.started.connect(self.infoWidget.setRunning)
         self.infoWorker.processComplete.connect(self.infoThread.quit)
         self.infoThread.finished.connect(self.infoWidget.setRunComplete)
+        self.infoThread.finished.connect(self._infoComplete)
         
         self.runThread = QThread()
         self.runWorker = SubprocessWorker()
@@ -216,6 +240,34 @@ class DvdBackupWidget(HSplitter):
         self.infoWorker.cmd = self.infoCmd
         self.infoThread.start()
         
+    def _infoComplete(self):
+        self.dvdname, info, titleset = self._parseInfo()
+        self.infoView.setSummaryInfo(f"{info}\n{titleset}")
+        self.catCmd = self._getCatCmd(prompt=False)
+        if self.catCmd is not None:
+            self.catWidget.setCmd(self.catCmd)
+            self.vobPathChanged.emit(self.vobPath)
+        
+    def _parseInfo(self):
+        """ Get dvd name and guessed main title set """
+        dvdname = ""
+        mainFeatureInfo = ""
+        titleSet = ""
+        
+        if (m := re.search(r'DVD-Video information of the DVD with title "(?P<name>.*)"', self.infoWidget.text)) is not None:
+            dvdname = m.group('name')
+        if (m := re.search(r'(?P<mainfeature>Main feature:.*?)\n\n', self.infoWidget.text, re.DOTALL)) is not None:
+            mainFeatureInfo = m.group('mainfeature')
+        if mainFeatureInfo:
+            if (m := re.search(r'Title set containing the main feature is (?P<num>\d+)', mainFeatureInfo)) is not None:
+                num = m.group('num')
+                if (m := re.search(f'(?P<titleset>Title set {num}.*?)\n\n', self.infoWidget.text, re.DOTALL)) is not None:
+                    titleSet = m.group('titleset')
+                    # remove multiple indentation
+                    titleSet = re.sub(r'\t+', '\t', titleSet)
+
+        return dvdname, mainFeatureInfo, titleSet
+        
     ## DVDBACKUP COMMAND
     def setRunCmd(self):
         try:
@@ -267,7 +319,7 @@ class DvdBackupWidget(HSplitter):
         self.catCmd = None
      
     def _getCatCmd(self, prompt=True):
-        if self.catCmd is None or self.dvdName is None or not os.path.exists(self.vobPath):
+        if self.dvdName is None or not os.path.exists(self.vobPath):
             if not prompt:
                 return None
             else:
