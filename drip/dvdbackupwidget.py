@@ -181,7 +181,7 @@ class DvdBackupWidget(HSplitter):
         self.catThread.started.connect(self.catWidget.setRunning)
         self.catWorker.processComplete.connect(self.catThread.quit)
         self.catThread.finished.connect(self.catWidget.setRunComplete)
-        self.catThread.finished.connect(self.resetCatCmd)
+        self.catThread.finished.connect(self.catComplete)
         
     ## DVD DEVICE
     @property
@@ -261,11 +261,27 @@ class DvdBackupWidget(HSplitter):
         if mainFeatureInfo:
             if (m := re.search(r'Title set containing the main feature is (?P<num>\d+)', mainFeatureInfo)) is not None:
                 num = m.group('num')
-                if (m := re.search(f'(?P<titleset>Title set {num}.*?)\n\n', self.infoWidget.text, re.DOTALL)) is not None:
-                    titleSet = m.group('titleset')
-                    # remove multiple indentation
-                    titleSet = re.sub(r'\t+', '\t', titleSet)
-
+                
+                titleSets = re.split("Title Sets:", self.infoWidget.text)[-1]
+                
+                ts = {}
+                tset = ""
+                idx = '0'
+                for line in titleSets.split("\n"):
+                    if (m:=re.match(r"\tTitle set (?P<num>\d+)", line)) is not None:
+                        if tset.strip():
+                            ts[idx] = tset
+                        idx = m.group('num')
+                        tset = ""
+                    line = re.sub(r"\t", "    ", line)
+                    tset += line + "\n"
+                    
+                if tset.strip():
+                    ts[idx] = tset
+                titleSet = ts[num].strip()
+                
+                mainFeatureInfo = re.sub(r"\t", "    ", mainFeatureInfo)
+                
         return dvdname, mainFeatureInfo, titleSet
         
     ## DVDBACKUP COMMAND
@@ -314,6 +330,11 @@ class DvdBackupWidget(HSplitter):
             return m.group('dvdname')
         else:
             return None
+        
+    def catComplete(self):
+        if self.autoCatCheckBox.isChecked():
+            self.vobPathChanged.emit(self.vobPath)
+        self.resetCatCmd()
         
     def resetCatCmd(self):
         self.catCmd = None
